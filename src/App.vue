@@ -139,7 +139,7 @@
               {{ authStore.userInitials }}
             </button>
 
-            <div v-if="showProfileMenu" class="absolute right-0 mt-3 w-64 glass-panel border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in fade-in">
+            <div v-if="showProfileMenu" class="absolute right-0 mt-3 w-64 bg-[#090a0f]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in fade-in">
               <div class="p-4 bg-[#1a1e2e] border-b border-white/10 text-left">
                 <p class="text-white font-bold text-sm leading-tight">{{ authStore.currentUser?.first_name }} {{ authStore.currentUser?.last_name }}</p>
                 <p class="text-[10px] text-[#F5C518] uppercase tracking-widest font-extrabold mt-1">{{ authStore.currentUser?.role }} Status</p>
