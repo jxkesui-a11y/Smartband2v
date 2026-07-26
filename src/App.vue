@@ -79,9 +79,6 @@
 
         <!-- Sidebar Bottom Tools: Scope & Attendance -->
         <div class="space-y-2">
-          <button @click="showScopeModal = true" class="w-full py-2.5 bg-white/5 text-gray-300 hover:text-white hover:bg-white/10 font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border border-white/5">
-            <i class="fa-solid fa-compass-drafting text-[#0A84FF]"></i> <span>Scope & Limitations</span>
-          </button>
 
           <button @click="showAttendanceModal = true" class="w-full py-2.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5">
             <i class="fa-solid fa-qrcode"></i> <span>Rehearsal Check-In</span>
@@ -103,9 +100,6 @@
           </router-link>
         </nav>
 
-        <button @click="showScopeModal = true; closeMenus()" class="w-full py-2.5 bg-white/5 text-gray-300 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5">
-          <i class="fa-solid fa-compass-drafting text-[#0A84FF]"></i> Scope & Limitations
-        </button>
       </div>
 
       <!-- Main Content Area -->
@@ -149,9 +143,6 @@
                 <i class="fa-solid fa-user-pen text-[#F5C518]"></i> Edit Profile & Availability
               </button>
 
-              <button @click="showScopeModal = true; closeMenus()" class="p-3.5 text-left text-xs font-bold text-gray-300 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2 border-b border-white/5">
-                <i class="fa-solid fa-compass-drafting text-[#0A84FF]"></i> Scope & Limitations
-              </button>
 
               <button @click="handleLogout" class="p-3.5 text-left text-xs font-bold text-red-400 hover:bg-red-500/10 transition-all flex items-center gap-2">
                 <i class="fa-solid fa-right-from-bracket"></i> Sign Out
@@ -206,10 +197,6 @@
       @cancel="showApplicationModal = false"
     />
 
-    <ScopeModal
-      :show="showScopeModal"
-      @close="showScopeModal = false"
-    />
 
     <AttendanceModal
       :show="showAttendanceModal"
@@ -233,7 +220,6 @@ import EditMemberModal from './components/modals/EditMemberModal.vue';
 import MyProfileModal from './components/modals/MyProfileModal.vue';
 import AttendanceModal from './components/modals/AttendanceModal.vue';
 import ApplicationFormModal from './components/modals/ApplicationFormModal.vue';
-import ScopeModal from './components/modals/ScopeModal.vue';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -248,7 +234,6 @@ const showAddEventModal = ref(false);
 const showMyProfileModal = ref(false);
 const showAttendanceModal = ref(false);
 const showApplicationModal = ref(false);
-const showScopeModal = ref(false);
 
 const deferredInstallPrompt = ref(null);
 const installBannerDismissed = ref(false);
