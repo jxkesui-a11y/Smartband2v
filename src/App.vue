@@ -45,8 +45,8 @@
       <!-- Backdrop glow -->
       <div class="fixed bottom-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(245,197,24,0.06)_0%,rgba(0,0,0,0)_70%)] pointer-events-none -z-10 animate-glow"></div>
 
-      <!-- Backdrop Overlay for Mobile Drawer & Profile Menu -->
-      <div v-if="showProfileMenu || showMobileMenu" @click="closeMenus" class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"></div>
+      <!-- Backdrop Overlay for Mobile Drawer -->
+      <div v-if="showMobileMenu" @click="closeMenus" class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"></div>
 
       <!-- Desktop Sidebar -->
       <aside class="w-64 shrink-0 glass-panel rounded-3xl p-5 flex flex-col hidden md:flex shadow-2xl relative z-50 justify-between">
@@ -132,7 +132,10 @@
 
           <!-- User Menu & Initials -->
           <div class="relative">
-            <button @click="showProfileMenu = !showProfileMenu" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#f5c518] to-[#ffd700] text-black font-black text-sm flex items-center justify-center shadow-md shadow-[#f5c518]/20 hover:scale-105 transition-transform">
+            <!-- Invisible overlay to close dropdown -->
+            <div v-if="showProfileMenu" @click="showProfileMenu = false" class="fixed inset-0 z-40"></div>
+
+            <button @click="showProfileMenu = !showProfileMenu" class="relative z-50 w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#f5c518] to-[#ffd700] text-black font-black text-sm flex items-center justify-center shadow-md shadow-[#f5c518]/20 hover:scale-105 transition-transform">
               {{ authStore.userInitials }}
             </button>
 
