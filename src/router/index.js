@@ -6,7 +6,6 @@ const MessagesTab = () => import('../components/tabs/MessagesTab.vue');
 const MusicTab = () => import('../components/tabs/MusicTab.vue');
 const RosterTab = () => import('../components/tabs/RosterTab.vue');
 const RequestsTab = () => import('../components/tabs/RequestsTab.vue');
-const ToolsTab = () => import('../components/tabs/ToolsTab.vue');
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
@@ -14,8 +13,7 @@ const routes = [
   { path: '/messages/:channel?', component: MessagesTab, name: 'messages' },
   { path: '/music', component: MusicTab, name: 'music' },
   { path: '/roster', component: RosterTab, name: 'roster' },
-  { path: '/requests', component: RequestsTab, name: 'requests', meta: { adminOnly: true } },
-  { path: '/tools', component: ToolsTab, name: 'tools' },
+  { path: '/requests', component: RequestsTab, name: 'requests', meta: { adminOnly: true } }
 ];
 
 export const router = createRouter({

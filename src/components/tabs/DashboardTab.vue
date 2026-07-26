@@ -1,25 +1,28 @@
 <template>
   <div class="space-y-8 text-left">
     
-    <!-- Top Band Practice Summary Banner -->
+    <!-- Top Band Availability & Escalation Summary Banner -->
     <div class="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-[#12151e] via-[#1a1e2e] to-[#12151e]">
       <div class="flex items-center gap-4">
         <div class="w-14 h-14 rounded-2xl bg-[#F5C518]/10 border border-[#F5C518]/20 flex items-center justify-center text-[#F5C518] text-2xl shrink-0">
-          <i class="fa-solid fa-stopwatch"></i>
+          <i class="fa-solid fa-users-gear"></i>
         </div>
         <div>
-          <h3 class="text-lg font-extrabold text-white">Weekly Rehearsal Summary</h3>
-          <p class="text-xs text-gray-400">Total logged practice hours across all band sections</p>
+          <h3 class="text-lg font-extrabold text-white">Active Band Operations & Availability</h3>
+          <p class="text-xs text-gray-400">
+            <span class="text-emerald-400 font-bold">{{ activeMembersCount }}</span> Active Roster Members
+            <span class="mx-1">•</span>
+            <span class="text-amber-400 font-bold">{{ quietHoursCount }}</span> Currently Muted (Quiet Hours)
+          </p>
         </div>
       </div>
-      <div class="flex items-center gap-6">
-        <div class="text-right">
-          <span class="text-2xl font-black gold-gradient-text">{{ bandStore.totalPracticeHoursThisWeek.toFixed(1) }}</span>
-          <span class="text-xs text-gray-400 font-bold ml-1 uppercase">Hours</span>
-        </div>
-        <router-link to="/tools" class="px-4 py-2 bg-[#F5C518] text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-[#d4a914] transition-all">
-          <i class="fa-solid fa-plus mr-1"></i> Log Practice
-        </router-link>
+
+      <div class="flex items-center gap-3">
+        <button v-if="authStore.canManageDashboard" @click="handleGlobalReNotify"
+          class="px-4 py-2.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 font-extrabold rounded-xl text-xs uppercase tracking-wider hover:bg-amber-500/30 transition-all flex items-center gap-2 shadow-md">
+          <i class="fa-solid fa-[#F5C518] fa-bell text-sm"></i>
+          <span>Re-Notify Unresponsive</span>
+        </button>
       </div>
     </div>
 
@@ -43,28 +46,34 @@
             class="p-5 md:p-6 rounded-3xl border transition-all relative group flex flex-col glass-card"
             :class="post.is_urgent ? 'border-red-500/30 bg-red-950/20' : 'border-white/5'">
             
-            <!-- Delete Post (Officers Only) -->
-            <button v-if="authStore.canManageDashboard" @click="handleDeletePost(post.id)"
+            <!-- Delete Post Action -->
+            <button v-if="authStore.canManageDashboard" @click="triggerDeletePost(post.id)"
               class="absolute top-4 right-4 text-gray-500 hover:text-red-400 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-2">
               <i class="fa-solid fa-trash-can"></i>
             </button>
 
             <!-- Metadata Header -->
-            <div class="flex items-center gap-2 mb-3">
+            <div class="flex flex-wrap items-center gap-2 mb-3">
               <span v-if="post.is_urgent" class="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
                 <i class="fa-solid fa-triangle-exclamation mr-1"></i> URGENT
               </span>
               <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                 {{ formatDate(post.created_at) }} • By {{ post.users?.first_name || 'Officer' }}
               </span>
+
+              <!-- Senior Voice Readout Button -->
+              <button @click="speakPost(post.title + '. ' + post.message)" title="Senior Voice Readout"
+                class="ml-auto text-[10px] font-bold text-purple-400 hover:text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-md border border-purple-500/20 flex items-center gap-1">
+                <i class="fa-solid fa-volume-high"></i> Listen
+              </button>
             </div>
 
             <!-- Title & Message -->
             <h3 class="font-bold text-white text-base md:text-lg mb-2 leading-snug">{{ post.title }}</h3>
             <p class="text-xs md:text-sm text-gray-300 leading-relaxed break-words flex-1 whitespace-pre-line">{{ post.message }}</p>
 
-            <!-- Read Acknowledgment Footer -->
-            <div v-if="post.is_urgent" class="mt-5 pt-4 border-t border-white/10 flex justify-between items-center">
+            <!-- Read Acknowledgment & Re-Notify Footer -->
+            <div v-if="post.is_urgent" class="mt-5 pt-4 border-t border-white/10 flex flex-wrap justify-between items-center gap-3">
               <button v-if="!bandStore.hasAcknowledged(post.id)" @click="handleAcknowledge(post.id)"
                 class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all flex items-center gap-1.5">
                 <i class="fa-solid fa-check"></i> Mark as Read / Acknowledged
@@ -73,9 +82,16 @@
                 <i class="fa-solid fa-circle-check"></i> Acknowledged
               </span>
 
-              <span v-if="authStore.canManageDashboard" class="text-[10px] text-[#F5C518] uppercase tracking-widest font-bold">
-                <i class="fa-solid fa-eye mr-1"></i> {{ bandStore.getAckCount(post.id) }} Reads
-              </span>
+              <div class="flex items-center gap-3">
+                <span v-if="authStore.canManageDashboard" class="text-[10px] text-[#F5C518] uppercase tracking-widest font-bold">
+                  <i class="fa-solid fa-eye mr-1"></i> {{ bandStore.getAckCount(post.id) }} Reads
+                </span>
+
+                <button v-if="authStore.canManageDashboard" @click="handleReNotifyPost(post.id)"
+                  class="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1.5 rounded-xl font-bold uppercase tracking-wider hover:bg-amber-500/20 transition-all flex items-center gap-1">
+                  <i class="fa-solid fa-bell"></i> Re-Notify Unresponsive
+                </button>
+              </div>
             </div>
           </div>
 
@@ -101,8 +117,8 @@
           <div v-for="event in bandStore.events" :key="event.id" 
             class="glass-card p-5 rounded-3xl border border-white/5 flex flex-col relative group">
             
-            <!-- Delete Event (Officers Only) -->
-            <button v-if="authStore.canManageDashboard" @click="handleDeleteEvent(event.id)"
+            <!-- Delete Event Action -->
+            <button v-if="authStore.canManageDashboard" @click="triggerDeleteEvent(event.id)"
               class="absolute top-4 right-4 text-gray-500 hover:text-red-400 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5">
               <i class="fa-solid fa-xmark"></i>
             </button>
@@ -143,15 +159,16 @@
                 </button>
               </div>
 
-              <!-- Attendee Breakdown Toggle -->
+              <!-- Attendee Breakdown Toggle & Re-Notify Button -->
               <div class="flex justify-between items-center text-[10px] text-gray-400 uppercase font-bold px-1">
                 <span class="text-emerald-400 cursor-pointer hover:text-white transition-colors" @click="toggleAttendees(event.id)">
                   <i :class="expandedEventId === event.id ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" class="mr-1"></i>
                   {{ bandStore.getRSVPStats(event.id).going }} Going
                 </span>
-                <span class="text-red-400 cursor-pointer hover:text-white transition-colors" @click="toggleAttendees(event.id)">
-                  {{ bandStore.getRSVPStats(event.id).notGoing }} Not Going
-                </span>
+                <button v-if="authStore.canManageDashboard" @click="handleReNotifyEvent(event.id)"
+                  class="text-[9px] text-amber-400 hover:underline flex items-center gap-1">
+                  <i class="fa-solid fa-bell"></i> Re-Notify Pending RSVPs
+                </button>
               </div>
 
               <!-- Expanded Attendee List -->
@@ -185,13 +202,25 @@
         </div>
       </section>
     </div>
+
+    <!-- Custom In-App Confirm Modal -->
+    <ConfirmModal
+      :show="confirmModal.show"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirmText="confirmModal.confirmText"
+      :isDanger="true"
+      @confirm="executeConfirmedAction"
+      @cancel="confirmModal.show = false"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useAuthStore } from '../../stores/authStore';
 import { useBandStore } from '../../stores/bandStore';
+import ConfirmModal from '../modals/ConfirmModal.vue';
 
 const emit = defineEmits(['open-add-post', 'open-add-event']);
 
@@ -199,6 +228,19 @@ const authStore = useAuthStore();
 const bandStore = useBandStore();
 
 const expandedEventId = ref(null);
+
+const confirmModal = ref({
+  show: false,
+  title: '',
+  message: '',
+  confirmText: 'Delete',
+  action: null
+});
+
+const activeMembersCount = computed(() => bandStore.roster.length || 1);
+const quietHoursCount = computed(() => {
+  return bandStore.roster.filter(m => bandStore.isUserInQuietHours(m)).length;
+});
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
@@ -219,6 +261,15 @@ const toggleAttendees = (eventId) => {
   expandedEventId.value = expandedEventId.value === eventId ? null : eventId;
 };
 
+const speakPost = (text) => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+  }
+};
+
 const handleAcknowledge = async (postId) => {
   try {
     await bandStore.acknowledgePost(postId);
@@ -227,16 +278,51 @@ const handleAcknowledge = async (postId) => {
   }
 };
 
-const handleDeletePost = async (postId) => {
-  if (confirm('Are you sure you want to delete this post?')) {
-    await bandStore.deletePost(postId);
+const handleReNotifyPost = async (postId) => {
+  const count = await bandStore.reNotifyUnresponsive(postId, 'post');
+  alert(`Re-notification alert dispatched to ${count} unresponsive members!`);
+};
+
+const handleReNotifyEvent = async (eventId) => {
+  const count = await bandStore.reNotifyUnresponsive(eventId, 'event');
+  alert(`Re-notification alert dispatched to ${count} members with pending RSVPs!`);
+};
+
+const handleGlobalReNotify = async () => {
+  if (bandStore.posts.length > 0) {
+    const latestPost = bandStore.posts[0];
+    const count = await bandStore.reNotifyUnresponsive(latestPost.id, 'post');
+    alert(`Global Re-notify triggered! Alert sent to ${count} members.`);
+  } else {
+    alert('No active urgent announcements to re-notify.');
   }
 };
 
-const handleDeleteEvent = async (eventId) => {
-  if (confirm('Are you sure you want to delete this event?')) {
-    await bandStore.deleteEvent(eventId);
+const triggerDeletePost = (postId) => {
+  confirmModal.value = {
+    show: true,
+    title: 'Delete Announcement',
+    message: 'Are you sure you want to permanently delete this band announcement?',
+    confirmText: 'Delete Post',
+    action: () => bandStore.deletePost(postId)
+  };
+};
+
+const triggerDeleteEvent = (eventId) => {
+  confirmModal.value = {
+    show: true,
+    title: 'Delete Scheduled Event',
+    message: 'Are you sure you want to remove this event from the band roadmap?',
+    confirmText: 'Delete Event',
+    action: () => bandStore.deleteEvent(eventId)
+  };
+};
+
+const executeConfirmedAction = async () => {
+  if (confirmModal.value.action) {
+    await confirmModal.value.action();
   }
+  confirmModal.value.show = false;
 };
 
 const downloadCalendarFile = (event) => {

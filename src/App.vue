@@ -1,12 +1,34 @@
 <template>
-  <div id="smartband-root" class="min-h-screen bg-[#090a0f] text-gray-100 font-sans relative overflow-x-hidden selection:bg-[#F5C518] selection:text-black">
+  <div id="smartband-root"
+    :class="[
+      authStore.currentUser?.large_text ? 'senior-text-mode' : '',
+      authStore.currentUser?.high_contrast ? 'high-contrast-mode' : ''
+    ]"
+    class="min-h-screen bg-[#090a0f] text-gray-100 font-sans relative overflow-x-hidden selection:bg-[#F5C518] selection:text-black">
     
     <!-- Login Screen -->
     <Login v-if="!authStore.isLoggedIn" @login-success="handleLoginSuccess" />
 
     <!-- Offline Alert Banner -->
     <div v-if="isOffline" class="bg-red-600 text-white text-[10px] font-extrabold text-center py-1.5 fixed top-0 left-0 right-0 z-[9999] uppercase tracking-[0.2em] animate-pulse">
-      <i class="fa-solid fa-wifi mr-2"></i> Offline Mode: Viewing cached data.
+      <i class="fa-solid fa-wifi mr-2"></i> Offline Mode: Viewing cached music sheets & data.
+    </div>
+
+    <!-- PWA Install Prompt Banner -->
+    <div v-if="deferredInstallPrompt && !installBannerDismissed"
+      class="bg-gradient-to-r from-[#F5C518] to-[#ffd700] text-black px-4 py-2 fixed top-0 left-0 right-0 z-[9998] shadow-lg flex items-center justify-between font-bold text-xs">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-mobile-screen text-base"></i>
+        <span>Install SmartBand 2.0 App on your Home Screen for full offline capabilities!</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="triggerPwaInstall" class="bg-black text-white px-3 py-1 rounded-xl text-[10px] uppercase font-extrabold hover:bg-gray-900 transition-all">
+          Install App
+        </button>
+        <button @click="installBannerDismissed = true" class="text-black hover:text-gray-800 p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
     </div>
 
     <!-- Toast Notification Overlay -->
@@ -18,7 +40,7 @@
     </div>
 
     <!-- Main Authenticated Layout Shell -->
-    <div v-if="authStore.isLoggedIn" class="min-h-screen p-4 md:p-6 flex gap-6" :class="isOffline ? 'pt-10' : ''">
+    <div v-if="authStore.isLoggedIn" class="min-h-screen p-4 md:p-6 flex gap-6" :class="isOffline || deferredInstallPrompt ? 'pt-10' : ''">
       
       <!-- Backdrop glow -->
       <div class="fixed bottom-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(245,197,24,0.06)_0%,rgba(0,0,0,0)_70%)] pointer-events-none -z-10 animate-glow"></div>
@@ -34,7 +56,7 @@
             <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#f5c518] to-[#ffd700] text-black flex items-center justify-center shadow-lg shadow-[#f5c518]/20">
               <i class="fa-solid fa-music"></i>
             </div>
-            <span>SmartBand <span class="text-xs bg-[#f5c518]/20 text-[#f5c518] px-2 py-0.5 rounded-full border border-[#f5c518]/30">2.0</span></span>
+            <span>SmartBand <span class="text-xs bg-[#f5c518]/20 text-[#f5c518] px-2 py-0.5 rounded-full border border-[#f5c518]/30">2.0 PWA</span></span>
           </div>
 
           <!-- Navigation Links -->
@@ -55,18 +77,21 @@
           </nav>
         </div>
 
-        <!-- Attendance Check-in Widget Trigger -->
-        <div class="p-4 bg-white/5 border border-white/5 rounded-2xl space-y-2">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Rehearsal Check-In</p>
+        <!-- Sidebar Bottom Tools: Scope & Attendance -->
+        <div class="space-y-2">
+          <button @click="showScopeModal = true" class="w-full py-2.5 bg-white/5 text-gray-300 hover:text-white hover:bg-white/10 font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border border-white/5">
+            <i class="fa-solid fa-compass-drafting text-[#0A84FF]"></i> <span>Scope & Limitations</span>
+          </button>
+
           <button @click="showAttendanceModal = true" class="w-full py-2.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5">
-            <i class="fa-solid fa-qrcode"></i> <span>Session Check-In</span>
+            <i class="fa-solid fa-qrcode"></i> <span>Rehearsal Check-In</span>
           </button>
         </div>
       </aside>
 
       <!-- Mobile Navigation Drawer -->
       <div v-if="showMobileMenu" class="fixed top-[80px] left-4 right-4 glass-panel border border-white/10 rounded-3xl shadow-2xl z-50 p-4 md:hidden animate-in slide-in-from-top-4">
-        <nav class="space-y-1.5">
+        <nav class="space-y-1.5 mb-3">
           <router-link v-for="tab in filteredTabs" :key="tab.id" :to="tab.path"
             @click="showMobileMenu = false"
             v-slot="{ isActive }">
@@ -77,6 +102,10 @@
             </button>
           </router-link>
         </nav>
+
+        <button @click="showScopeModal = true; closeMenus()" class="w-full py-2.5 bg-white/5 text-gray-300 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-compass-drafting text-[#0A84FF]"></i> Scope & Limitations
+        </button>
       </div>
 
       <!-- Main Content Area -->
@@ -94,7 +123,7 @@
                 {{ currentRouteName }}
               </h1>
               <p class="text-xs text-gray-400">
-                Tier: <span class="text-[#F5C518] font-bold capitalize">{{ authStore.currentUser?.tier || 'Member' }}</span>
+                Category: <span class="text-[#F5C518] font-bold capitalize">{{ authStore.currentUser?.tier || 'Junior' }}</span>
                 <span class="mx-1.5">•</span>
                 <span class="text-white font-bold">{{ authStore.currentUser?.instrument }}</span>
               </p>
@@ -114,7 +143,11 @@
               </div>
 
               <button @click="showMyProfileModal = true; closeMenus()" class="p-3.5 text-left text-xs font-bold text-gray-300 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2 border-b border-white/5">
-                <i class="fa-solid fa-user-pen text-[#F5C518]"></i> Edit Profile
+                <i class="fa-solid fa-user-pen text-[#F5C518]"></i> Edit Profile & Availability
+              </button>
+
+              <button @click="showScopeModal = true; closeMenus()" class="p-3.5 text-left text-xs font-bold text-gray-300 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2 border-b border-white/5">
+                <i class="fa-solid fa-compass-drafting text-[#0A84FF]"></i> Scope & Limitations
               </button>
 
               <button @click="handleLogout" class="p-3.5 text-left text-xs font-bold text-red-400 hover:bg-red-500/10 transition-all flex items-center gap-2">
@@ -132,6 +165,7 @@
                 @open-add-post="showAddPostModal = true"
                 @open-add-event="showAddEventModal = true"
                 @open-edit-member="member => { editingUser = member; }"
+                @open-application-form="showApplicationModal = true"
               />
             </keep-alive>
           </router-view>
@@ -155,10 +189,23 @@
 
     <MyProfileModal
       :show="showMyProfileModal"
-      :form="myProfileForm"
+      :user="authStore.currentUser"
       :instrumentList="instrumentList"
       @update="updateMyProfile"
       @cancel="showMyProfileModal = false"
+    />
+
+    <ApplicationFormModal
+      :show="showApplicationModal"
+      :instrumentList="instrumentList"
+      :isSubmitting="isSubmitting"
+      @submit="submitApplication"
+      @cancel="showApplicationModal = false"
+    />
+
+    <ScopeModal
+      :show="showScopeModal"
+      @close="showScopeModal = false"
     />
 
     <AttendanceModal
@@ -182,6 +229,8 @@ import AddEventModal from './components/modals/AddEventModal.vue';
 import EditMemberModal from './components/modals/EditMemberModal.vue';
 import MyProfileModal from './components/modals/MyProfileModal.vue';
 import AttendanceModal from './components/modals/AttendanceModal.vue';
+import ApplicationFormModal from './components/modals/ApplicationFormModal.vue';
+import ScopeModal from './components/modals/ScopeModal.vue';
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -195,6 +244,11 @@ const showAddPostModal = ref(false);
 const showAddEventModal = ref(false);
 const showMyProfileModal = ref(false);
 const showAttendanceModal = ref(false);
+const showApplicationModal = ref(false);
+const showScopeModal = ref(false);
+
+const deferredInstallPrompt = ref(null);
+const installBannerDismissed = ref(false);
 
 const editingUser = ref(null);
 const isSubmitting = ref(false);
@@ -203,7 +257,10 @@ const toast = ref({ show: false, message: '', type: 'success' });
 
 const instrumentList = ['Trumpet', 'Alto Sax', 'Tenor Sax', 'Clarinet', 'Flute', 'Trombone', 'Tuba', 'Percussion', 'Staff/Support'];
 
-const currentRouteName = computed(() => route.name ? route.name.toUpperCase() : 'DASHBOARD');
+const currentRouteName = computed(() => {
+  if (route.name === 'requests') return 'MEMBER VERIFICATION';
+  return route.name ? route.name.toUpperCase() : 'DASHBOARD';
+});
 
 const filteredTabs = computed(() => {
   const tabs = [
@@ -211,18 +268,11 @@ const filteredTabs = computed(() => {
     { id: 'messages', name: 'Messages', path: '/messages', icon: 'fa-regular fa-comments' },
     { id: 'music', name: 'Sheet Music', path: '/music', icon: 'fa-solid fa-music' },
     { id: 'roster', name: 'Band Roster', path: '/roster', icon: 'fa-solid fa-users' },
-    { id: 'tools', name: 'Band Tools', path: '/tools', icon: 'fa-solid fa-sliders' },
-    { id: 'requests', name: 'Access Requests', path: '/requests', icon: 'fa-solid fa-user-shield', adminOnly: true }
+    { id: 'requests', name: 'Member Verification', path: '/requests', icon: 'fa-solid fa-user-shield', adminOnly: true }
   ];
 
   return tabs.filter(t => !t.adminOnly || authStore.canManageDashboard);
 });
-
-const myProfileForm = computed(() => ({
-  firstName: authStore.currentUser?.first_name || '',
-  lastName: authStore.currentUser?.last_name || '',
-  instrument: authStore.currentUser?.instrument || ''
-}));
 
 const availableRoles = computed(() => [
   { value: 'admin', label: 'Admin' },
@@ -243,8 +293,19 @@ const closeMenus = () => {
   showMobileMenu.value = false;
 };
 
+const triggerPwaInstall = async () => {
+  if (deferredInstallPrompt.value) {
+    deferredInstallPrompt.value.prompt();
+    const { outcome } = await deferredInstallPrompt.value.userChoice;
+    if (outcome === 'accepted') {
+      showToast('SmartBand 2.0 app installed!');
+    }
+    deferredInstallPrompt.value = null;
+  }
+};
+
 const handleLoginSuccess = () => {
-  showToast('Welcome to SmartBand 2.0!');
+  showToast('Welcome to SmartBand 2.0 PWA!');
   bandStore.loadDashboardData();
   bandStore.fetchRoster();
   bandStore.setupRealtime();
@@ -282,6 +343,19 @@ const submitEvent = async (formData) => {
   }
 };
 
+const submitApplication = async (formData) => {
+  isSubmitting.value = true;
+  try {
+    await bandStore.submitMemberApplication(formData);
+    showApplicationModal.value = false;
+    showToast('Member verification application submitted!');
+  } catch (err) {
+    showToast('Application submission failed', 'error');
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
 const handleSaveUser = async (updatedUser) => {
   isSubmitting.value = true;
   try {
@@ -312,6 +386,11 @@ onMounted(async () => {
     showToast('Connection restored!', 'success');
   });
 
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt.value = e;
+  });
+
   await authStore.initAuth();
   if (authStore.isLoggedIn) {
     bandStore.loadDashboardData();
@@ -324,3 +403,20 @@ onUnmounted(() => {
   bandStore.stopRealtime();
 });
 </script>
+
+<style>
+.senior-text-mode {
+  font-size: 1.15rem !important;
+  line-height: 1.75 !important;
+}
+
+.senior-text-mode button {
+  font-size: 0.95rem !important;
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+
+.high-contrast-mode {
+  filter: contrast(125%) brightness(110%);
+}
+</style>

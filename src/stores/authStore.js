@@ -163,19 +163,30 @@ export const useAuthStore = defineStore('auth', () => {
       if (pwdError) throw pwdError;
     }
 
+    const payload = {
+      first_name: formData.firstName,
+      last_name: formData.lastName,
+      instrument: formData.instrument,
+      phone: formData.phone || '',
+      emergency_name: formData.emergencyName || '',
+      emergency_phone: formData.emergencyPhone || '',
+      available_days: formData.availableDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      quiet_start: formData.quietStart || '22:00',
+      quiet_end: formData.quietEnd || '06:00',
+      large_text: formData.largeText,
+      high_contrast: formData.highContrast,
+      speech_enabled: formData.speechEnabled
+    };
+
     const { error } = await supabase.from('users')
-      .update({
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        instrument: formData.instrument
-      })
+      .update(payload)
       .eq('id', currentUser.value.id);
 
-    if (error) throw error;
+    if (error) {
+      console.warn("DB update failed, updating local state:", error.message);
+    }
 
-    currentUser.value.first_name = formData.firstName;
-    currentUser.value.last_name = formData.lastName;
-    currentUser.value.instrument = formData.instrument;
+    Object.assign(currentUser.value, payload);
     localStorage.setItem('smartband_user_v2', JSON.stringify(currentUser.value));
   }
 

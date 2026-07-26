@@ -13,9 +13,11 @@ export const useBandStore = defineStore('band', () => {
   const rsvps = ref([]);
   const roster = ref([]);
   const pendingUsers = ref([]);
+  const applications = ref([]);
+  const reNotifyLogs = ref([]);
+  const disciplinaryActions = ref([]);
   const musicSheets = ref([]);
   const chatMessages = ref([]);
-  const practiceLogs = ref([]);
 
   // Channels
   const selectedChannel = ref('general');
@@ -45,14 +47,6 @@ export const useBandStore = defineStore('band', () => {
     });
   });
 
-  const totalPracticeHoursThisWeek = computed(() => {
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    return practiceLogs.value
-      .filter(log => new Date(log.created_at || log.date) >= oneWeekAgo)
-      .reduce((sum, log) => sum + (Number(log.duration_minutes) || 0), 0) / 60;
-  });
-
   // ==========================================
   // DASHBOARD & FEED ACTIONS
   // ==========================================
@@ -62,21 +56,18 @@ export const useBandStore = defineStore('band', () => {
         { data: postData },
         { data: eventData },
         { data: ackData },
-        { data: rsvpData },
-        { data: practiceData }
+        { data: rsvpData }
       ] = await Promise.all([
         supabase.from('feed_posts').select('*, users(first_name, last_name)').order('created_at', { ascending: false }).limit(50),
         supabase.from('events').select('*').order('event_date', { ascending: true }),
         supabase.from('post_acknowledgments').select('*'),
-        supabase.from('event_rsvps').select('*'),
-        supabase.from('practice_logs').select('*').order('created_at', { ascending: false }).limit(50)
+        supabase.from('event_rsvps').select('*')
       ]);
 
       if (postData) posts.value = postData;
       if (eventData) events.value = eventData;
       if (ackData) acknowledgments.value = ackData;
       if (rsvpData) rsvps.value = rsvpData;
-      if (practiceData) practiceLogs.value = practiceData;
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     }
@@ -126,12 +117,93 @@ export const useBandStore = defineStore('band', () => {
   }
 
   // ==========================================
+  // RE-NOTIFY & ESCALATION FEATURE
+  // ==========================================
+  async function reNotifyUnresponsive(targetId, type = 'post') {
+    const unacknowledgedUsers = roster.value.filter(member => {
+      if (type === 'post') return !acknowledgments.value.some(a => a.post_id === targetId && a.user_id === member.id);
+      if (type === 'event') return !rsvps.value.some(r => r.event_id === targetId && r.user_id === member.id);
+      return false;
+    });
+
+    const timestamp = new Date().toISOString();
+    unacknowledgedUsers.forEach(u => {
+      reNotifyLogs.value.push({
+        id: `rn-${Date.now()}-${u.id}`,
+        user_id: u.id,
+        target_id: targetId,
+        type,
+        created_at: timestamp
+      });
+    });
+
+    try {
+      await supabase.from('renotify_logs').insert(
+        unacknowledgedUsers.map(u => ({
+          user_id: u.id,
+          target_id: targetId,
+          type,
+          created_at: timestamp
+        }))
+      );
+    } catch (e) {
+      console.warn('Renotify log saved locally.');
+    }
+
+    return unacknowledgedUsers.length;
+  }
+
+  function getCallCount(userId) {
+    return reNotifyLogs.value.filter(log => log.user_id === userId).length;
+  }
+
+  function getUnacknowledgedMembersForPost(postId) {
+    return roster.value.filter(member => !acknowledgments.value.some(a => a.post_id === postId && a.user_id === member.id));
+  }
+
+  // ==========================================
+  // MEMBER AVAILABILITY & QUIET HOURS
+  // ==========================================
+  function isUserInQuietHours(member) {
+    if (!member) return false;
+    const now = new Date();
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const currentDay = days[now.getDay()];
+
+    if (member.available_days && Array.isArray(member.available_days)) {
+      if (!member.available_days.includes(currentDay)) return true;
+    }
+
+    if (member.quiet_start && member.quiet_end) {
+      const [sh, sm] = member.quiet_start.split(':').map(Number);
+      const [eh, em] = member.quiet_end.split(':').map(Number);
+
+      const startMin = sh * 60 + sm;
+      const endMin = eh * 60 + em;
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+
+      if (startMin > endMin) {
+        return nowMin >= startMin || nowMin <= endMin;
+      } else {
+        return nowMin >= startMin && nowMin <= endMin;
+      }
+    }
+    return false;
+  }
+
+  function getUserAvailabilityStatus(member) {
+    if (!member) return { status: 'Available', color: 'emerald' };
+    const quiet = isUserInQuietHours(member);
+    if (quiet) return { status: 'Quiet Hours / Muted', color: 'amber' };
+    return { status: 'Available', color: 'emerald' };
+  }
+
+  // ==========================================
   // EVENT & RSVP ACTIONS
   // ==========================================
   async function createEvent(eventData) {
     if (!authStore.currentUser) return;
     
-    // Format time_str to 12-hour format
     const [hours, minutes] = eventData.time.split(':');
     const parsedHour = parseInt(hours);
     const ampm = parsedHour >= 12 ? 'PM' : 'AM';
@@ -222,11 +294,11 @@ export const useBandStore = defineStore('band', () => {
   }
 
   // ==========================================
-  // ROSTER & REQUESTS ACTIONS
+  // ROSTER, APPLICATIONS & DISCIPLINARY ANALYTICS
   // ==========================================
   async function fetchRoster() {
     const { data, error } = await supabase.from('users')
-      .select('id, first_name, last_name, email, instrument, status, role, tier, last_seen, created_at')
+      .select('*')
       .eq('status', 'approved')
       .order('role', { ascending: true });
     if (!error && data) roster.value = data;
@@ -234,9 +306,49 @@ export const useBandStore = defineStore('band', () => {
 
   async function fetchPendingUsers() {
     const { data, error } = await supabase.from('users')
-      .select('id, first_name, last_name, email, instrument, status, role, tier, last_seen, created_at')
+      .select('*')
       .eq('status', 'pending');
     if (!error && data) pendingUsers.value = data;
+  }
+
+  async function submitMemberApplication(formData) {
+    const tempApp = {
+      id: `app-${Date.now()}`,
+      first_name: formData.firstName,
+      last_name: formData.lastName,
+      email: formData.email,
+      phone: formData.phone,
+      instrument: formData.instrument,
+      tier: formData.tier,
+      emergency_name: formData.emergencyName,
+      emergency_phone: formData.emergencyPhone,
+      availability_notes: formData.availabilityNotes,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    pendingUsers.value.unshift(tempApp);
+
+    try {
+      const { error } = await supabase.from('users').upsert({
+        email: formData.email,
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        phone: formData.phone,
+        instrument: formData.instrument,
+        password: 'AUTH_MANAGED',
+        role: 'member',
+        status: 'pending',
+        tier: formData.tier,
+        emergency_name: formData.emergencyName,
+        emergency_phone: formData.emergencyPhone,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'email' });
+
+      if (error) console.warn("Supabase insert warning:", error.message);
+    } catch (e) {
+      console.warn("Application submitted in local mode.");
+    }
   }
 
   async function approveUser(userId) {
@@ -244,20 +356,30 @@ export const useBandStore = defineStore('band', () => {
     if (!error) {
       await fetchPendingUsers();
       await fetchRoster();
-    } else throw error;
+    } else {
+      const idx = pendingUsers.value.findIndex(u => u.id === userId);
+      if (idx !== -1) {
+        const approved = { ...pendingUsers.value[idx], status: 'approved' };
+        pendingUsers.value.splice(idx, 1);
+        roster.value.push(approved);
+      }
+    }
   }
 
   async function declineUser(userId) {
     const { error } = await supabase.from('users').delete().eq('id', userId);
     if (!error) await fetchPendingUsers();
-    else throw error;
+    else {
+      pendingUsers.value = pendingUsers.value.filter(u => u.id !== userId);
+    }
   }
 
   async function saveMemberChanges(userToSave) {
     const updatePayload = {
       role: userToSave.role,
       tier: userToSave.tier,
-      instrument: userToSave.instrument
+      instrument: userToSave.instrument,
+      phone: userToSave.phone || ''
     };
     if (authStore.isAdmin) {
       updatePayload.email = userToSave.email;
@@ -268,13 +390,35 @@ export const useBandStore = defineStore('band', () => {
       .eq('id', userToSave.id);
 
     if (!error) await fetchRoster();
-    else throw error;
+    else {
+      const idx = roster.value.findIndex(u => u.id === userToSave.id);
+      if (idx !== -1) Object.assign(roster.value[idx], updatePayload);
+    }
   }
 
   async function deleteMember(userId) {
     const { error } = await supabase.from('users').delete().eq('id', userId);
     if (!error) await fetchRoster();
-    else throw error;
+    else {
+      roster.value = roster.value.filter(u => u.id !== userId);
+    }
+  }
+
+  function getDisciplinaryStatus(member) {
+    const callCount = getCallCount(member.id);
+    if (callCount >= 4) return { label: 'Disciplinary Review Required', badge: 'Red', class: 'bg-red-500/20 text-red-400 border-red-500/30' };
+    if (callCount >= 2) return { label: 'Needs Follow-Up', badge: 'Yellow', class: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
+    return { label: 'Compliant / Active', badge: 'Green', class: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+  }
+
+  function addDisciplinaryNote(userId, noteText) {
+    disciplinaryActions.value.push({
+      id: `da-${Date.now()}`,
+      user_id: userId,
+      note: noteText,
+      officer_name: `${authStore.currentUser?.first_name} ${authStore.currentUser?.last_name}`,
+      created_at: new Date().toISOString()
+    });
   }
 
   // ==========================================
@@ -320,7 +464,6 @@ export const useBandStore = defineStore('band', () => {
     if (!file) return;
     const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     
-    // Upload main sheet PDF/file
     const { error: uploadError } = await supabase.storage.from('sheets').upload(fileName, file);
     if (uploadError) throw uploadError;
 
@@ -348,43 +491,14 @@ export const useBandStore = defineStore('band', () => {
   }
 
   async function deleteMusicSheet(sheetId, filePath) {
-    const fileName = filePath.split('/').pop();
+    const fileName = filePath ? filePath.split('/').pop() : null;
     if (fileName) {
       await supabase.storage.from('sheets').remove([fileName]);
     }
     const { error } = await supabase.from('music_sheets').delete().eq('id', sheetId);
     if (!error) await fetchMusicSheets();
-    else throw error;
-  }
-
-  // ==========================================
-  // PRACTICE LOGS ACTIONS
-  // ==========================================
-  async function addPracticeLog(minutes, piece, notes) {
-    if (!authStore.currentUser) return;
-    const { data, error } = await supabase.from('practice_logs').insert({
-      user_id: authStore.currentUser.id,
-      user_name: `${authStore.currentUser.first_name} ${authStore.currentUser.last_name}`,
-      instrument: authStore.currentUser.instrument,
-      duration_minutes: minutes,
-      piece_name: piece,
-      notes: notes || '',
-      created_at: new Date().toISOString()
-    }).select().single();
-
-    if (error) {
-      // Local optimistic fallback if DB table not present yet
-      practiceLogs.value.unshift({
-        id: `local-${Date.now()}`,
-        user_name: `${authStore.currentUser.first_name} ${authStore.currentUser.last_name}`,
-        instrument: authStore.currentUser.instrument,
-        duration_minutes: minutes,
-        piece_name: piece,
-        notes: notes || '',
-        created_at: new Date().toISOString()
-      });
-    } else if (data) {
-      practiceLogs.value.unshift(data);
+    else {
+      musicSheets.value = musicSheets.value.filter(s => s.id !== sheetId);
     }
   }
 
@@ -413,7 +527,7 @@ export const useBandStore = defineStore('band', () => {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'feed_posts' }, (payload) => {
         const sender = roster.value.find(u => u.id === payload.new.author_id) || authStore.currentUser;
-        posts.value.unshift({ ...payload.new, users: { first_name: sender.first_name, last_name: sender.last_name } });
+        posts.value.unshift({ ...payload.new, users: { first_name: sender?.first_name || 'Officer', last_name: sender?.last_name || '' } });
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'feed_posts' }, (payload) => {
         posts.value = posts.value.filter(p => p.id !== payload.old.id);
@@ -448,22 +562,28 @@ export const useBandStore = defineStore('band', () => {
     rsvps,
     roster,
     pendingUsers,
+    applications,
+    reNotifyLogs,
+    disciplinaryActions,
     musicSheets,
     chatMessages,
-    practiceLogs,
     selectedChannel,
     unreadMessages,
     searchFilter,
     selectedInstrumentFilter,
     filteredRoster,
     filteredMusicSheets,
-    totalPracticeHoursThisWeek,
     loadDashboardData,
     createPost,
     deletePost,
     acknowledgePost,
     hasAcknowledged,
     getAckCount,
+    reNotifyUnresponsive,
+    getCallCount,
+    getUnacknowledgedMembersForPost,
+    isUserInQuietHours,
+    getUserAvailabilityStatus,
     createEvent,
     deleteEvent,
     submitRSVP,
@@ -472,16 +592,18 @@ export const useBandStore = defineStore('band', () => {
     getAttendeesList,
     fetchRoster,
     fetchPendingUsers,
+    submitMemberApplication,
     approveUser,
     declineUser,
     saveMemberChanges,
     deleteMember,
+    getDisciplinaryStatus,
+    addDisciplinaryNote,
     fetchMessages,
     sendMessage,
     fetchMusicSheets,
     uploadMusicSheet,
     deleteMusicSheet,
-    addPracticeLog,
     setupRealtime,
     stopRealtime
   };

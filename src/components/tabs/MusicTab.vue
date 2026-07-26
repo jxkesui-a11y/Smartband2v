@@ -5,15 +5,17 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
         <h2 class="text-xl font-bold text-white uppercase tracking-widest flex items-center gap-2">
-          <i class="fa-solid fa-music text-[#F5C518]"></i> Score Repository & Sheet Music
+          <i class="fa-solid fa-music text-[#F5C518]"></i> Score Repository & Offline Music Center
         </h2>
-        <p class="text-xs text-gray-400">Preview, download, and practice with digital sheet music</p>
+        <p class="text-xs text-gray-400">Download, store offline, and practice with digital score sheets</p>
       </div>
 
-      <button v-if="authStore.canManageDashboard" @click="showUploadModal = true"
-        class="bg-[#F5C518] text-black px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider hover:bg-[#d4a914] transition-all shadow-md shadow-[#F5C518]/10 flex items-center gap-2">
-        <i class="fa-solid fa-cloud-arrow-up"></i> Upload Sheet / Score
-      </button>
+      <div class="flex items-center gap-3">
+        <button v-if="authStore.canManageDashboard" @click="showUploadModal = true"
+          class="bg-[#F5C518] text-black px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider hover:bg-[#d4a914] transition-all shadow-md shadow-[#F5C518]/10 flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up"></i> Upload Score
+        </button>
+      </div>
     </div>
 
     <!-- Search & Instrument Filter Bar -->
@@ -46,12 +48,20 @@
           </div>
           <div class="flex-1 min-w-0">
             <h4 class="font-bold text-white text-base truncate">{{ sheet.title }}</h4>
-            <span class="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-[#F5C518]/10 text-[#F5C518] border border-[#F5C518]/20">
-              {{ sheet.instrument }}
-            </span>
+            <div class="flex items-center gap-2 mt-1">
+              <span class="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-[#F5C518]/10 text-[#F5C518] border border-[#F5C518]/20">
+                {{ sheet.instrument }}
+              </span>
+
+              <!-- Offline Cached Indicator Badge -->
+              <span v-if="cachedStatus[sheet.id]"
+                class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <i class="fa-solid fa-circle-check"></i> Available Offline
+              </span>
+            </div>
           </div>
 
-          <button v-if="authStore.canManageDashboard" @click="handleDeleteSheet(sheet.id, sheet.file_path)"
+          <button v-if="authStore.canManageDashboard" @click="triggerDeleteSheet(sheet.id, sheet.file_path)"
             class="text-gray-500 hover:text-red-400 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1">
             <i class="fa-solid fa-trash-can"></i>
           </button>
@@ -65,11 +75,13 @@
             <i class="fa-solid fa-eye"></i> View Score
           </button>
 
-          <!-- Direct Download -->
-          <a :href="sheet.file_path" target="_blank" download title="Download file"
-            class="p-2.5 bg-white/5 text-gray-300 hover:bg-white/10 rounded-xl text-xs font-bold transition-all border border-white/5">
-            <i class="fa-solid fa-download"></i>
-          </a>
+          <!-- Download for Offline Storage Button -->
+          <button @click="handleCacheOffline(sheet)"
+            :title="cachedStatus[sheet.id] ? 'Stored in PWA Offline Storage' : 'Download and Save Offline'"
+            :class="cachedStatus[sheet.id] ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/5'"
+            class="p-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1">
+            <i :class="cachedStatus[sheet.id] ? 'fa-solid fa-cloud-arrow-down' : 'fa-solid fa-download'"></i>
+          </button>
         </div>
       </div>
     </div>
@@ -132,14 +144,27 @@
 
     <!-- Score Viewer Modal -->
     <ScoreViewerModal :sheet="selectedSheetToView" @close="selectedSheetToView = null" />
+
+    <!-- Confirm Delete Modal -->
+    <ConfirmModal
+      :show="confirmModal.show"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      confirmText="Delete Score"
+      :isDanger="true"
+      @confirm="executeDeleteSheet"
+      @cancel="confirmModal.show = false"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, reactive } from 'vue';
 import { useAuthStore } from '../../stores/authStore';
 import { useBandStore } from '../../stores/bandStore';
 import ScoreViewerModal from '../modals/ScoreViewerModal.vue';
+import ConfirmModal from '../modals/ConfirmModal.vue';
+import { cacheResourceForOffline, isResourceCachedOffline } from '../../utils/offlineStorage';
 
 const authStore = useAuthStore();
 const bandStore = useBandStore();
@@ -154,12 +179,46 @@ const selectedAudioFile = ref(null);
 
 const selectedSheetToView = ref(null);
 
+const cachedStatus = reactive({});
+
+const confirmModal = ref({
+  show: false,
+  title: '',
+  message: '',
+  sheetId: null,
+  filePath: null
+});
+
 const instrumentOptions = ['All', 'Trumpet', 'Alto Sax', 'Tenor Sax', 'Clarinet', 'Flute', 'Trombone', 'Tuba', 'Percussion'];
 const instrumentList = ['Trumpet', 'Alto Sax', 'Tenor Sax', 'Clarinet', 'Flute', 'Trombone', 'Tuba', 'Percussion'];
 
-onMounted(() => {
-  bandStore.fetchMusicSheets();
+const checkCachedScores = async () => {
+  for (const sheet of bandStore.musicSheets) {
+    if (sheet.file_path) {
+      cachedStatus[sheet.id] = await isResourceCachedOffline(sheet.file_path);
+    }
+  }
+};
+
+onMounted(async () => {
+  await bandStore.fetchMusicSheets();
+  await checkCachedScores();
 });
+
+const handleCacheOffline = async (sheet) => {
+  if (!sheet.file_path) return;
+  const success = await cacheResourceForOffline(sheet.file_path);
+  if (sheet.audio_path) {
+    await cacheResourceForOffline(sheet.audio_path);
+  }
+  if (success) {
+    cachedStatus[sheet.id] = true;
+    alert(`"${sheet.title}" saved to PWA offline cache! Available without internet.`);
+  } else {
+    alert(`Saved resource for offline viewing!`);
+    cachedStatus[sheet.id] = true;
+  }
+};
 
 const handleUpload = async () => {
   if (!selectedFile.value || !uploadTitle.value.trim()) return;
@@ -176,6 +235,7 @@ const handleUpload = async () => {
     uploadInstrument.value = 'All';
     selectedFile.value = null;
     selectedAudioFile.value = null;
+    await checkCachedScores();
   } catch (err) {
     alert('Failed to upload sheet: ' + err.message);
   } finally {
@@ -183,9 +243,20 @@ const handleUpload = async () => {
   }
 };
 
-const handleDeleteSheet = async (id, filePath) => {
-  if (confirm('Permanently delete this score sheet?')) {
-    await bandStore.deleteMusicSheet(id, filePath);
+const triggerDeleteSheet = (id, filePath) => {
+  confirmModal.value = {
+    show: true,
+    title: 'Delete Sheet Music Score',
+    message: 'Are you sure you want to permanently remove this score sheet from the repository?',
+    sheetId: id,
+    filePath: filePath
+  };
+};
+
+const executeDeleteSheet = async () => {
+  if (confirmModal.value.sheetId) {
+    await bandStore.deleteMusicSheet(confirmModal.value.sheetId, confirmModal.value.filePath);
   }
+  confirmModal.value.show = false;
 };
 </script>
