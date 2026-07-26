@@ -51,7 +51,7 @@
         <!-- Emergency Contact -->
         <div class="bg-[#12151e] p-4 rounded-2xl border border-white/5 space-y-3">
           <h4 class="text-xs font-bold text-[#F5C518] uppercase tracking-wider flex items-center gap-2">
-            <i class="fa-solid fa-[#F5C518] fa-phone-volume text-sm"></i> Emergency Call-up Contact
+            <i class="fa-solid fa-phone-volume text-sm"></i> Emergency Call-up Contact
           </h4>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <input v-model="localForm.emergencyName" type="text" placeholder="Contact Name"
@@ -75,7 +75,7 @@
             <div class="flex flex-wrap gap-1.5">
               <button type="button" v-for="day in daysOfWeek" :key="day"
                 @click="toggleDay(day)"
-                :class="localForm.availableDays.includes(day) ? 'bg-emerald-500 text-black font-extrabold' : 'bg-white/5 text-gray-400'"
+                :class="(localForm.availableDays || []).includes(day) ? 'bg-emerald-500 text-black font-extrabold' : 'bg-white/5 text-gray-400'"
                 class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all">
                 {{ day }}
               </button>
@@ -190,25 +190,29 @@ const showPasswordFields = ref(false);
 const passwords = ref({ current: '', new: '' });
 
 watch(() => props.show, (isShowing) => {
-  if (isShowing && props.user) {
+  if (isShowing) {
+    const u = props.user || {};
     localForm.value = {
-      firstName: props.user.first_name || '',
-      lastName: props.user.last_name || '',
-      instrument: props.user.instrument || 'Trumpet',
-      phone: props.user.phone || '',
-      emergencyName: props.user.emergency_name || '',
-      emergencyPhone: props.user.emergency_phone || '',
-      availableDays: props.user.available_days || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-      quietStart: props.user.quiet_start || '22:00',
-      quietEnd: props.user.quiet_end || '06:00',
-      largeText: !!props.user.large_text,
-      highContrast: !!props.user.high_contrast,
-      speechEnabled: props.user.speech_enabled !== false
+      firstName: u.first_name || '',
+      lastName: u.last_name || '',
+      instrument: u.instrument || 'Trumpet',
+      phone: u.phone || '',
+      emergencyName: u.emergency_name || '',
+      emergencyPhone: u.emergency_phone || '',
+      availableDays: Array.isArray(u.available_days) ? [...u.available_days] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      quietStart: u.quiet_start || '22:00',
+      quietEnd: u.quiet_end || '06:00',
+      largeText: !!u.large_text,
+      highContrast: !!u.high_contrast,
+      speechEnabled: u.speech_enabled !== false
     };
   }
 }, { immediate: true });
 
 const toggleDay = (day) => {
+  if (!Array.isArray(localForm.value.availableDays)) {
+    localForm.value.availableDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  }
   const idx = localForm.value.availableDays.indexOf(day);
   if (idx !== -1) {
     localForm.value.availableDays.splice(idx, 1);

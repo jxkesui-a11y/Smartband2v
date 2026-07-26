@@ -266,7 +266,6 @@ const filteredTabs = computed(() => {
   const tabs = [
     { id: 'dashboard', name: 'Dashboard', path: '/dashboard', icon: 'fa-solid fa-border-all' },
     { id: 'messages', name: 'Messages', path: '/messages', icon: 'fa-regular fa-comments' },
-    { id: 'music', name: 'Sheet Music', path: '/music', icon: 'fa-solid fa-music' },
     { id: 'roster', name: 'Band Roster', path: '/roster', icon: 'fa-solid fa-users' },
     { id: 'requests', name: 'Member Verification', path: '/requests', icon: 'fa-solid fa-user-shield', adminOnly: true }
   ];
