@@ -4,7 +4,7 @@
       authStore.currentUser?.large_text ? 'senior-text-mode' : '',
       authStore.currentUser?.high_contrast ? 'high-contrast-mode' : ''
     ]"
-    class="min-h-screen bg-[#090a0f] text-gray-100 font-sans relative overflow-x-hidden selection:bg-[#F5C518] selection:text-black">
+    class="min-h-screen bg-[#090a0f] text-gray-100 font-sans selection:bg-[#F5C518] selection:text-black">
     
     <!-- Login Screen -->
     <Login v-if="!authStore.isLoggedIn" @login-success="handleLoginSuccess" />
@@ -53,10 +53,10 @@
         <div>
           <!-- Logo & Brand Header -->
           <div class="flex items-center gap-3 text-xl font-extrabold text-white mb-8 px-2 tracking-tight">
-            <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#f5c518] to-[#ffd700] text-black flex items-center justify-center shadow-lg shadow-[#f5c518]/20">
+            <div class="w-10 h-10 shrink-0 rounded-2xl bg-gradient-to-tr from-[#f5c518] to-[#ffd700] text-black flex items-center justify-center shadow-lg shadow-[#f5c518]/20">
               <i class="fa-solid fa-music"></i>
             </div>
-            <span>SmartBand <span class="text-xs bg-[#f5c518]/20 text-[#f5c518] px-2 py-0.5 rounded-full border border-[#f5c518]/30">2.0 PWA</span></span>
+            <span>SmartBand <span class="text-[#f5c518]">2.0</span></span>
           </div>
 
           <!-- Navigation Links -->
